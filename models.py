@@ -6,7 +6,7 @@ from flask_bcrypt import Bcrypt
 from flask_sqlalchemy import SQLAlchemy
 
 bcrypt = Bcrypt() # password encryption
-db = SQLAlchemy() # datebase
+db = SQLAlchemy() # database
 
 
 class Follows(db.Model):

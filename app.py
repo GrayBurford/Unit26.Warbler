@@ -5,7 +5,7 @@ from flask_debugtoolbar import DebugToolbarExtension
 from sqlalchemy.exc import IntegrityError
 
 from forms import UserAddForm, LoginForm, MessageForm, EditUserProfileForm
-from models import db, connect_db, User, Message
+from models import db, connect_db, User, Message, Likes, Follows
 
 CURR_USER_KEY = "curr_user" # session[CURR_USER_KEY] keeps track of user id
 
@@ -18,9 +18,10 @@ app.config['SQLALCHEMY_DATABASE_URI'] = (
 
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['SQLALCHEMY_ECHO'] = False
-app.config['DEBUG_TB_INTERCEPT_REDIRECTS'] = True
+app.config['DEBUG_TB_INTERCEPT_REDIRECTS'] = False
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', "it's a secret")
 toolbar = DebugToolbarExtension(app)
+# in Termina: FLASK_DEBUG=1 flask run
 
 connect_db(app)
 
@@ -30,13 +31,14 @@ connect_db(app)
 ##############################################################################
 # User signup/login/logout
 
-@app.before_request # function to run before each request. Use this to load the logged in user from the session into Flask's global object 'g'.
-def add_user_to_g(): # adds user id to Flask's global object
+ # function to run before each request. Use this to load the logged in user from the session into Flask's global object 'g'.
+# adds user id to Flask's global object
+@app.before_request
+def add_user_to_g():
     """If we're logged in, add curr user to Flask global."""
 
     if CURR_USER_KEY in session:
         g.user = User.query.get(session[CURR_USER_KEY])
-
     else:
         g.user = None
 
@@ -182,6 +184,21 @@ def users_followers(user_id):
     user = User.query.get_or_404(user_id)
     return render_template('users/followers.html', user=user)
 
+@app.route('/users/<int:user_id>/likes', methods=["GET"])
+def users_liked_messages(user_id):
+    """Show list of liked messages for this user"""
+
+    if not g.user:
+        flash("Access unauthorized.", "danger")
+        return redirect("/")
+
+    user = User.query.get_or_404(user_id)
+    user_liked_messages = user.likes
+    return render_template('/users/liked_messages.html', 
+                            user=user, 
+                            likes=user_liked_messages
+    )
+
 
 @app.route('/users/follow/<int:follow_id>', methods=['POST'])
 def add_follow(follow_id):
@@ -256,6 +273,36 @@ def delete_user():
 
     return redirect("/signup")
 
+@app.route("/users/add_like/<int:msg_id>", methods=["POST"])
+def add_like(msg_id):
+    """Allow a user to like a message."""
+
+    if not g.user:
+        flash("Access unauthorized.", "danger")
+        return redirect("/")
+
+    message = Message.query.get_or_404(msg_id)
+
+    if not message:
+        flash('That message doesn\'t exist!', 'danger')
+        return redirect('/')
+
+    if message.user_id == g.user.id:
+        flash('Can\'t like you\'re own messages!', "danger")
+        return redirect('/')
+
+    like = Likes.query.filter_by(message_id=msg_id).first()
+
+    if like:
+        db.session.delete(like)
+        db.session.commit()
+        return redirect('/')
+    else:
+        g.user.likes.append(message)
+        db.session.commit()
+
+    return redirect('/')
+
 
 ##############################################################################
 # Messages routes:
@@ -290,7 +337,7 @@ def messages_show(message_id):
     msg = Message.query.get(message_id)
     return render_template('messages/show.html', message=msg)
 
-
+# CHECK THIS ROUTE CAREFULLY SO USERS CAN'T REMOVE MESSAGES FROM OTHER USERS
 @app.route('/messages/<int:message_id>/delete', methods=["POST"])
 def messages_destroy(message_id):
     """Delete a message."""
@@ -319,17 +366,22 @@ def homepage():
     """
 
     if g.user:
-        followed_users = [each.id for each in g.user.following] + [g.user.id]
-        import pdb
-        pdb.set_trace()
-        messages = (Message
-                    .query
-                    .filter(Message.user_id.in_(followed_users))
-                    .order_by(Message.timestamp.desc())
-                    .limit(100)
-                    .all())
+        followed_users_and_me = [each.id for each in g.user.following] + [g.user.id]
 
-        return render_template('home.html', messages=messages)
+        me_and_f_messages = (Message
+                        .query
+                        .filter(Message.user_id.in_(followed_users_and_me))
+                        .order_by(Message.timestamp.desc())
+                        .limit(100)
+                        .all()
+        )
+
+        liked_msg_ids = [msg.id for msg in g.user.likes]
+
+        return render_template('home.html', 
+                            messages=me_and_f_messages, 
+                            likes=liked_msg_ids
+        )
 
     else:
         return render_template('home-anon.html')
