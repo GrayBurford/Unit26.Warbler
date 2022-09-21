@@ -20,8 +20,8 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['SQLALCHEMY_ECHO'] = False
 app.config['DEBUG_TB_INTERCEPT_REDIRECTS'] = False
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', "it's a secret")
-toolbar = DebugToolbarExtension(app)
-# in Termina: FLASK_DEBUG=1 flask run
+# toolbar = DebugToolbarExtension(app)
+# in Terminal: FLASK_DEBUG=1 flask run
 
 connect_db(app)
 
